@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>黄金现货观察台</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Gold Spot Monitor</p>
+        <h1>黄金现货观察台</h1>
+        <p class="subtitle">跟踪国际与中国黄金价格、波动区间、趋势变化和稳健买入信号。</p>
+      </div>
+      <div class="top-actions">
+        <button id="refreshBtn" type="button">刷新行情</button>
+        <p id="lastUpdated" class="muted">等待更新</p>
+      </div>
+    </header>
+
+    <main>
+      <section id="dataNotice" class="notice">
+        <strong>风险提示：</strong>
+        本页面用于日常观察和辅助决策，不构成投资建议。当前版本只展示服务端抓取到的最新真实数据；如果行情源失败，页面会报错，不再生成模拟价格。
+      </section>
+
+      <section class="market-grid">
+        <article class="panel market-card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">World Market</p>
+              <h2>国际黄金参考</h2>
+            </div>
+            <span id="worldStatus" class="status">判断中</span>
+          </div>
+          <div class="price-row">
+            <div>
+              <p class="label">现货 XAU 美元/盎司</p>
+              <strong id="worldUsd" class="price">--</strong>
+            </div>
+            <div>
+              <p class="label">现货折人民币/克</p>
+              <strong id="worldCnyGram" class="price secondary">--</strong>
+            </div>
+          </div>
+          <div class="price-row compact">
+            <div>
+              <p class="label">期货 GC=F 美元/盎司</p>
+              <strong id="futuresUsd" class="mini-price">--</strong>
+            </div>
+            <div>
+              <p class="label">期货折人民币/克</p>
+              <strong id="futuresCnyGram" class="mini-price">--</strong>
+            </div>
+          </div>
+          <canvas id="worldChart" height="220" aria-label="世界黄金趋势图"></canvas>
+          <p id="worldSource" class="source">数据源：准备中</p>
+        </article>
+
+        <article class="panel market-card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">China Spot</p>
+              <h2>中国黄金现货</h2>
+            </div>
+            <span id="chinaStatus" class="status">判断中</span>
+          </div>
+          <div class="price-row">
+            <div>
+              <p class="label">黄金 T+D / Au(T+D) 参考</p>
+              <strong id="chinaCnyGram" class="price">--</strong>
+            </div>
+            <div>
+              <p class="label">较国际现货估算差价</p>
+              <strong id="chinaPremium" class="price secondary">--</strong>
+            </div>
+          </div>
+          <canvas id="chinaChart" height="220" aria-label="中国黄金趋势图"></canvas>
+          <p id="chinaSource" class="source">数据源：准备中</p>
+          <div class="bank-price-panel">
+            <div class="panel-head mini-head">
+              <div>
+                <p class="eyebrow">ICBC Ruyi Gold</p>
+                <h3>工商银行如意金积存观察</h3>
+              </div>
+              <span id="icbcStatus" class="badge">等待中</span>
+            </div>
+            <div class="bank-price-grid">
+              <div>
+                <p class="label">主动积存价</p>
+                <strong id="icbcActivePrice" class="mini-price">--</strong>
+              </div>
+              <div>
+                <p class="label">赎回价</p>
+                <strong id="icbcRedeemPrice" class="mini-price">--</strong>
+              </div>
+            </div>
+            <p id="icbcSource" class="source">数据源：准备中</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Today Metrics</p>
+            <h2>今日关键指标</h2>
+          </div>
+          <span id="volatilityBadge" class="badge">波动评估中</span>
+        </div>
+        <div id="metricsGrid" class="metrics-grid"></div>
+      </section>
+
+      <section class="analysis-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Volatility</p>
+              <h2>波动分析</h2>
+            </div>
+          </div>
+          <div id="changeList" class="change-list"></div>
+          <canvas id="periodChart" height="230" aria-label="多周期趋势图"></canvas>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Decision Support</p>
+              <h2>决策建议</h2>
+            </div>
+          </div>
+          <div class="decision-block">
+            <h3>当前波动的主要原因</h3>
+            <ol id="reasonList"></ol>
+          </div>
+          <div class="decision-block">
+            <h3>未来趋势预测</h3>
+            <div id="forecastList" class="forecast-list"></div>
+          </div>
+          <div class="decision-block">
+            <h3>长期稳健投入建议</h3>
+            <ol id="adviceList"></ol>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel settings-panel">
+        <div>
+          <p class="eyebrow">Data Settings</p>
+          <h2>数据接入说明</h2>
+          <p id="dataDescription">
+            当前通过本地 Node 服务端代理读取数据：国际现货使用新浪财经伦敦金 hf_XAU，国际期货使用 Yahoo Finance GC=F，
+            人民币汇率优先使用 Yahoo Finance USD/CNY；中国黄金使用上海黄金交易所延时行情 Au(T+D)。页面不会使用模拟数据。
+          </p>
+        </div>
+        <div class="settings-grid">
+          <label>
+            刷新间隔（秒）
+            <input id="intervalInput" type="number" min="30" step="10" value="60" />
+          </label>
+          <label>
+            数据状态
+            <input id="dataStateInput" type="text" value="等待实时数据" readonly />
+          </label>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

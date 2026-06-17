@@ -390,7 +390,7 @@ function renderPayload(payload) {
       ).toLocaleString("zh-CN", { hour12: false })}。${payload.warnings?.join("；") || ""}`
     : payload.warnings?.length
     ? `<strong>已启用备选通道：</strong>${payload.warnings.join("；")}。页面未生成模拟行情。`
-    : "<strong>实时数据：</strong>当前页面只展示服务端抓取到的最新行情；国际为 Yahoo GC=F，国内为上金所 Au(T+D) 延时行情。";
+    : "<strong>实时数据：</strong>当前页面只展示服务端抓取到的最新行情；国际现货为新浪 hf_XAU，国际期货为 Yahoo GC=F，国内为上金所 Au(T+D) 延时行情。";
 
   renderMetrics(payload.china);
   renderChanges(futures?.available ? futures : spot);

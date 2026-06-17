@@ -212,44 +212,114 @@ function renderChanges(world) {
     .join("");
 }
 
+function classifyChange(value) {
+  if (!Number.isFinite(value)) return "unknown";
+  if (value >= 0.8) return "strong-up";
+  if (value >= 0.2) return "up";
+  if (value <= -0.8) return "strong-down";
+  if (value <= -0.2) return "down";
+  return "flat";
+}
+
+function buildMarketSignals(payload) {
+  const spot = payload.worldSpot || payload.world;
+  const futures = payload.worldFutures || {};
+  const china = payload.china;
+  const icbc = payload.icbcGold;
+  const trendSource = futures?.available ? futures : spot;
+  const hasTrend = trendSource?.available && trendSource.month?.length && trendSource.ytd?.length;
+  const chinaChange = pctChange(china.latest, china.open);
+  const chinaAmplitude = ((china.high - china.low) / china.open) * 100;
+  const spotSpread = spot?.available ? china.latest - spot.cnyPerGram : null;
+  const spotSpreadPct = spot?.available ? (spotSpread / spot.cnyPerGram) * 100 : null;
+  const bankSpread = icbc ? icbc.activePrice - icbc.redeemPrice : null;
+  const bankSpreadPct = icbc ? (bankSpread / icbc.activePrice) * 100 : null;
+  const weekChange = hasTrend ? nearestChange(trendSource.month, 7) : null;
+  const monthChange = hasTrend ? nearestChange(trendSource.month, 30) : null;
+  const ytdChange = hasTrend ? pctChange(trendSource.ytd.at(-1)?.close, trendSource.ytd[0]?.close) : null;
+  const score =
+    (classifyChange(chinaChange).includes("up") ? 1 : classifyChange(chinaChange).includes("down") ? -1 : 0) +
+    (Number.isFinite(weekChange) ? (weekChange > 0.5 ? 1 : weekChange < -0.5 ? -1 : 0) : 0) +
+    (Number.isFinite(monthChange) ? (monthChange > 1 ? 1 : monthChange < -1 ? -1 : 0) : 0) +
+    (Number.isFinite(spotSpreadPct) ? (spotSpreadPct > 0.5 ? -0.5 : spotSpreadPct < -0.5 ? 0.5 : 0) : 0);
+
+  return {
+    spot,
+    futures,
+    trendSource,
+    hasTrend,
+    chinaChange,
+    chinaAmplitude,
+    spotSpread,
+    spotSpreadPct,
+    bankSpread,
+    bankSpreadPct,
+    weekChange,
+    monthChange,
+    ytdChange,
+    score,
+    trendLabel: score >= 2 ? "偏强" : score <= -1.5 ? "偏弱" : "震荡",
+    volatilityLabel: chinaAmplitude >= 1.2 ? "高波动" : chinaAmplitude >= 0.6 ? "中等波动" : "低波动",
+  };
+}
+
 function renderDecision(payload) {
-  const trendSource = payload.worldFutures?.available ? payload.worldFutures : payload.worldSpot || payload.world;
-  const hasWorld = trendSource?.available && trendSource.month?.length && trendSource.ytd?.length;
-  const worldWeek = hasWorld ? nearestChange(trendSource.month, 7) : 0;
-  const ytd = hasWorld ? pctChange(trendSource.ytd.at(-1)?.close, trendSource.ytd[0]?.close) : 0;
-  const chinaAmplitude = ((payload.china.high - payload.china.low) / payload.china.open) * 100;
-  const trendUp = worldWeek > 0 && ytd > 0;
+  const s = buildMarketSignals(payload);
+  const isExpensiveBankEntry = Number.isFinite(s.bankSpreadPct) && s.bankSpreadPct >= 1.5;
+  const domesticPremiumHigh = Number.isFinite(s.spotSpreadPct) && s.spotSpreadPct > 0.5;
+  const domesticDiscount = Number.isFinite(s.spotSpreadPct) && s.spotSpreadPct < -0.5;
+  const intraday = classifyChange(s.chinaChange);
+  const trendDataText = s.hasTrend
+    ? `期货趋势参考：近一周 ${formatPct(s.weekChange)}，近一月 ${formatPct(s.monthChange)}，今年以来 ${formatPct(s.ytdChange)}。`
+    : "国际期货历史趋势暂不可用，当前主要依据国际现货、国内 Au(T+D) 和银行如意金报价判断。";
 
   const reasons = [
-    !hasWorld
-      ? "国际历史趋势暂时不可用，当前判断以国际现货报价和国内上金所 Au(T+D) 延时行情为主。"
-      : trendUp
-      ? "国际黄金期货与国内 Au(T+D) 均处于偏强观察区间，避险和配置需求仍在支撑金价。"
-      : "近期价格存在震荡或回落，短线资金可能在高位获利了结。",
-    "美元兑人民币汇率会影响国际金价折算成人民币/克后的观察成本。",
-    "利率预期、央行购金、地缘政治与通胀预期仍是黄金中长期波动的主要变量。",
+    `国内 Au(T+D) 日内${formatPct(s.chinaChange)}，振幅 ${formatPct(s.chinaAmplitude)}，当前属于${s.volatilityLabel}、${s.trendLabel}观察区间。`,
+    Number.isFinite(s.spotSpread)
+      ? `国内 Au(T+D) 较国际现货折算价${s.spotSpread >= 0 ? "溢价" : "折价"} ${Math.abs(s.spotSpread).toFixed(2)} 元/克，${domesticPremiumHigh ? "国内买入成本偏高" : domesticDiscount ? "国内价格相对国际现货偏低" : "内外价差处于相对温和区间"}。`
+      : "国际现货折算价暂不可用，内外价差无法确认。",
+    Number.isFinite(s.bankSpread)
+      ? `工行如意金主动积存价与赎回价价差为 ${s.bankSpread.toFixed(2)} 元/克，约 ${formatPct(s.bankSpreadPct)}，${isExpensiveBankEntry ? "短线买入后立即变现成本较高" : "银行渠道买卖价差相对可控"}。`
+      : "工行如意金报价暂不可用，银行渠道买卖价差无法确认。",
   ];
 
   const forecasts = [
     {
       title: "未来 1 天",
       text:
-        chinaAmplitude > 1.2
-          ? "日内振幅偏大，短线追高风险增加，更适合等待回落或分批观察。"
-          : "短线波动相对可控，若价格稳在开盘价上方，可继续小额观察。",
+        s.chinaAmplitude >= 1.2
+          ? `日内振幅已达 ${formatPct(s.chinaAmplitude)}，短线容易继续拉扯；若价格靠近今日高位，优先等待回落，不宜追高。`
+          : intraday.includes("up")
+          ? `日内价格小幅走强但振幅不高，若能维持在开盘价上方，可继续观察小额分批机会。`
+          : intraday.includes("down")
+          ? `日内价格偏弱，短线可能继续测试低位；更适合等企稳或分批低吸，不急于一次买入。`
+          : `日内走势接近横盘，预计 1 天内仍以区间震荡为主，适合观察而非重仓出手。`,
     },
     {
       title: "未来 1 周",
-      text: trendUp
-        ? "国际趋势仍偏强，但连续上涨后容易回踩，建议用分批买入控制成本。"
-        : "一周维度偏震荡，等待关键支撑确认后再加仓会更稳健。",
+      text:
+        s.trendLabel === "偏强"
+          ? `${trendDataText} 一周维度仍偏强，但如果国内溢价或银行买卖价差扩大，建议用分批买入替代追涨。`
+          : s.trendLabel === "偏弱"
+          ? `${trendDataText} 一周维度偏谨慎，建议等待回落后的支撑确认，再考虑提高买入比例。`
+          : `${trendDataText} 一周维度更像震荡整理，适合维持定投节奏，避免因单日波动改变长期计划。`,
     },
   ];
 
   const advice = [
-    "长期持有资金建议分批配置，不把预算集中在单一日内价格。",
-    "把黄金仓位上限先定好，仅用小比例资金做高波动机会仓。",
-    "当日内振幅扩大或一周涨幅过快时，优先等待回落；趋势向上且波动收敛时再考虑小额加仓。",
+    s.trendLabel === "偏强" && s.chinaAmplitude < 1.2
+      ? "长期仓位可以维持小额定投或分批加仓，但单次投入不宜过大，避免买在短线高点。"
+      : s.trendLabel === "偏弱"
+      ? "暂时降低新增投入节奏，把资金拆成多笔，等待价格接近今日低位或重新站回开盘价后再加。"
+      : "维持长期定投为主，单日价格没有明显优势时，不建议为了短线波动临时加大仓位。",
+    isExpensiveBankEntry
+      ? "如意金主动积存价与赎回价差较大时，不适合做短线快进快出；更适合作为长期持有渠道观察。"
+      : "如意金买卖价差相对可控时，可把它作为银行渠道的小额积存参考，但仍需分批执行。",
+    domesticPremiumHigh
+      ? "国内价格较国际现货溢价偏高时，优先等待价差收敛；若必须买入，建议只投入计划金额的一小部分。"
+      : domesticDiscount
+      ? "国内价格相对国际现货偏低时，可关注小额机会仓，但仍要保留后续补仓资金。"
+      : "内外价差温和时，按原定长期配置计划执行即可，不必因为微小价差频繁操作。",
   ];
 
   $("reasonList").innerHTML = reasons.map((item) => `<li>${item}</li>`).join("");
